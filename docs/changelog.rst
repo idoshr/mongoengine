@@ -7,12 +7,17 @@ Changelog
 Development
 ===========
 - (Fill this out as you fix issues and develop your features).
+- Support MONGODB-AWS authentication mechanism (with `authmechanismproperties`) #2507
+- Turning off dereferencing for the results of distinct query. #2663
+
+Changes in 0.24.2
+=================
+- Bug fix regarding uuidRepresentation that was case sensitive #2650
 
 Changes in 0.24.1
 =================
 - Allow pymongo<5.0 to be pulled
 - Don't use deprecated property for emptiness check in queryset base #2633
-
 
 Changes in 0.24.0
 =================
