@@ -1,11 +1,16 @@
 import datetime
 import unittest
+import uuid
 
 import pymongo
 import pytest
 from bson.tz_util import utc
 from pymongo import MongoClient, ReadPreference
-from pymongo.errors import InvalidName, OperationFailure
+from pymongo.errors import (
+    InvalidName,
+    InvalidOperation,
+    OperationFailure,
+)
 
 import mongoengine.connection
 from mongoengine import (
@@ -24,6 +29,10 @@ from mongoengine.connection import (
     get_db,
 )
 from mongoengine.pymongo_support import PYMONGO_VERSION
+
+
+def random_str():
+    return str(uuid.uuid4())
 
 
 def get_tz_awareness(connection):
@@ -49,7 +58,7 @@ class ConnectionTest(unittest.TestCase):
         connect("mongoenginetest")
 
         conn = get_connection()
-        assert isinstance(conn, pymongo.mongo_client.MongoClient)
+        assert isinstance(conn, pymongo.MongoClient)
 
         db = get_db()
         assert isinstance(db, pymongo.database.Database)
@@ -57,7 +66,13 @@ class ConnectionTest(unittest.TestCase):
 
         connect("mongoenginetest2", alias="testdb")
         conn = get_connection("testdb")
-        assert isinstance(conn, pymongo.mongo_client.MongoClient)
+        assert isinstance(conn, pymongo.MongoClient)
+
+        connect(
+            "mongoenginetest2", alias="testdb3", mongo_client_class=pymongo.MongoClient
+        )
+        conn = get_connection("testdb")
+        assert isinstance(conn, pymongo.MongoClient)
 
     def test_connect_disconnect_works_properly(self):
         class History1(Document):
@@ -286,6 +301,30 @@ class ConnectionTest(unittest.TestCase):
         connections = mongoengine.connection._connections
         assert len(connections) == 0
         disconnect(alias="not_exist")
+
+    def test_disconnect_does_not_close_client_used_by_another_alias(self):
+        client1 = connect(alias="disconnect_reused_client_test_1")
+        client2 = connect(alias="disconnect_reused_client_test_2")
+        client3 = connect(alias="disconnect_reused_client_test_3", maxPoolSize=10)
+        assert client1 is client2
+        assert client1 is not client3
+        client1.admin.command("ping")
+        disconnect("disconnect_reused_client_test_1")
+        # The client is not closed because the second alias still exists.
+        client2.admin.command("ping")
+        disconnect("disconnect_reused_client_test_2")
+        # The client is now closed:
+        if PYMONGO_VERSION >= (4,):
+            with pytest.raises(InvalidOperation):
+                client2.admin.command("ping")
+        # 3rd client connected to the same cluster with different options
+        # is not closed either.
+        client3.admin.command("ping")
+        disconnect("disconnect_reused_client_test_3")
+        # 3rd client is now closed:
+        if PYMONGO_VERSION >= (4,):
+            with pytest.raises(InvalidOperation):
+                client3.admin.command("ping")
 
     def test_disconnect_all(self):
         connections = mongoengine.connection._connections
@@ -589,6 +628,50 @@ class ConnectionTest(unittest.TestCase):
         c1 = connect(alias="testdb1", db="testdb1", username="u1", password="pass")
         c2 = connect(alias="testdb2", db="testdb2", username="u2", password="pass")
         assert c1 is not c2
+
+    def test_connect_uri_uuidrepresentation_set_in_uri(self):
+        rand = random_str()
+        tmp_conn = connect(
+            alias=rand,
+            host=f"mongodb://localhost:27017/{rand}?uuidRepresentation=csharpLegacy",
+        )
+        assert (
+            tmp_conn.options.codec_options.uuid_representation
+            == pymongo.common._UUID_REPRESENTATIONS["csharpLegacy"]
+        )
+        disconnect(rand)
+
+    def test_connect_uri_uuidrepresentation_set_as_arg(self):
+        rand = random_str()
+        tmp_conn = connect(alias=rand, db=rand, uuidRepresentation="javaLegacy")
+        assert (
+            tmp_conn.options.codec_options.uuid_representation
+            == pymongo.common._UUID_REPRESENTATIONS["javaLegacy"]
+        )
+        disconnect(rand)
+
+    def test_connect_uri_uuidrepresentation_set_both_arg_and_uri_arg_prevail(self):
+        rand = random_str()
+        tmp_conn = connect(
+            alias=rand,
+            host=f"mongodb://localhost:27017/{rand}?uuidRepresentation=csharpLegacy",
+            uuidRepresentation="javaLegacy",
+        )
+        assert (
+            tmp_conn.options.codec_options.uuid_representation
+            == pymongo.common._UUID_REPRESENTATIONS["javaLegacy"]
+        )
+        disconnect(rand)
+
+    def test_connect_uri_uuidrepresentation_default_to_pythonlegacy(self):
+        # To be changed soon to unspecified
+        rand = random_str()
+        tmp_conn = connect(alias=rand, db=rand)
+        assert (
+            tmp_conn.options.codec_options.uuid_representation
+            == pymongo.common._UUID_REPRESENTATIONS["pythonLegacy"]
+        )
+        disconnect(rand)
 
 
 if __name__ == "__main__":

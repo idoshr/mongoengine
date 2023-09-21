@@ -237,7 +237,7 @@ class BaseQuerySet:
             for the search and the rules for the stemmer and tokenizer.
             If not specified, the search uses the default language of the index.
             For supported languages, see
-            `Text Search Languages <http://docs.mongodb.org/manual/reference/text-search-languages/#text-search-languages>`.
+            `Text Search Languages <https://docs.mongodb.org/manual/reference/text-search-languages/#text-search-languages>`.
         """
         queryset = self.clone()
         if queryset._search_text:
@@ -255,7 +255,7 @@ class BaseQuerySet:
         return queryset
 
     def get(self, *q_objs, **query):
-        """Retrieve the the matching object raising
+        """Retrieve the matching object raising
         :class:`~mongoengine.queryset.MultipleObjectsReturned` or
         `DocumentName.MultipleObjectsReturned` exception if multiple results
         and :class:`~mongoengine.queryset.DoesNotExist` or
@@ -1128,7 +1128,6 @@ class BaseQuerySet:
         new_ordering = queryset._get_order_by(keys)
 
         if queryset._cursor_obj:
-
             # If a cursor object has already been created, apply the sort to it
             if new_ordering:
                 queryset._cursor_obj.sort(new_ordering)
@@ -1284,7 +1283,8 @@ class BaseQuerySet:
                 "No 'json_options' are specified! Falling back to "
                 "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
                 "For use with other MongoDB drivers specify the UUID "
-                "representation to use.",
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
                 DeprecationWarning,
             )
             kwargs["json_options"] = LEGACY_JSON_OPTIONS
@@ -1296,10 +1296,10 @@ class BaseQuerySet:
         return [self._document._from_son(data) for data in son_data]
 
     def aggregate(self, pipeline, *suppl_pipeline, **kwargs):
-        """Perform a aggregate function based in your queryset params
+        """Perform an aggregate function based on your queryset params
 
-        :param pipeline: list of aggregation commands,\
-            see: http://docs.mongodb.org/manual/core/aggregation-pipeline/
+        :param pipeline: list of aggregation commands,
+            see: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
         :param suppl_pipeline: unpacked list of pipeline (added to support deprecation of the old interface)
             parameter will be removed shortly
         :param kwargs: (optional) kwargs dictionary to be passed to pymongo's aggregate call
@@ -1317,7 +1317,7 @@ class BaseQuerySet:
         initial_pipeline = []
         if self._none or self._empty:
             initial_pipeline.append({"$limit": 1})
-            initial_pipeline.append({"$match": {"fldksjhkjhafds": "lasdjfhlasdhfk"}})
+            initial_pipeline.append({"$match": {"$expr": False}})
 
         if self._query:
             initial_pipeline.append({"$match": self._query})
@@ -1751,29 +1751,29 @@ class BaseQuerySet:
 
     def _item_frequencies_map_reduce(self, field, normalize=False):
         map_func = """
-            function() {
-                var path = '{{~%(field)s}}'.split('.');
+            function() {{
+                var path = '{{{{~{field}}}}}'.split('.');
                 var field = this;
 
-                for (p in path) {
+                for (p in path) {{
                     if (typeof field != 'undefined')
                        field = field[path[p]];
                     else
                        break;
-                }
-                if (field && field.constructor == Array) {
-                    field.forEach(function(item) {
+                }}
+                if (field && field.constructor == Array) {{
+                    field.forEach(function(item) {{
                         emit(item, 1);
-                    });
-                } else if (typeof field != 'undefined') {
+                    }});
+                }} else if (typeof field != 'undefined') {{
                     emit(field, 1);
-                } else {
+                }} else {{
                     emit(null, 1);
-                }
-            }
-        """ % {
-            "field": field
-        }
+                }}
+            }}
+        """.format(
+            field=field
+        )
         reduce_func = """
             function(key, values) {
                 var total = 0;
